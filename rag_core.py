@@ -12,8 +12,8 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
-# 加载环境变量 (API Key)
-load_dotenv()
+os.environ["CUDA_VISIBLE_DEVICES"] = "" 
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "0"
 
 # --- 配置路径 ---
 DATA_PATH = "./data"  # 存放 PDF 的文件夹
