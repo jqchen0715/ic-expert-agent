@@ -12,8 +12,6 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
-os.environ["CUDA_VISIBLE_DEVICES"] = "" 
-os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "0"
 
 # --- 配置路径 ---
 DATA_PATH = "./data"  # 存放 PDF 的文件夹
@@ -24,20 +22,17 @@ embeddings = HuggingFaceEmbeddings(
     )
 llm = ChatOllama(
     model=os.getenv("OLLAMA_MODEL", "qwen2.5:14b"),
-    temperature=0.1,
+    temperature=0.7,
     base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 )
 def create_vector_db():
     """
-    核心逻辑：强制重建数据库 (加载 PDF -> 切分 -> 向量化 -> 存入数据库)
+    核心逻辑：优先复用已有数据库；仅在不存在时执行构建
     """
-    # --- 1. 清理旧战场 ---
-    # 无论旧数据库是不是存在，先检查一下。如果有，直接删掉！
-    # 这样能保证每次运行都是“全新”的，不会混入旧文档。
-    if os.path.exists(CHROMA_PATH):
-        import shutil
-        shutil.rmtree(CHROMA_PATH)
-        print(f"🗑️ 已删除旧数据库 {CHROMA_PATH}，正在准备重建...")
+    # --- 1. 优先复用已有数据库 ---
+    if os.path.isdir(CHROMA_PATH) and os.listdir(CHROMA_PATH):
+        print(f"✅ 检测到已有数据库 {CHROMA_PATH}，跳过文档切分与重建。")
+        return Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
 
     # --- 2. 检查原料 ---
     if not os.path.exists(DATA_PATH):
@@ -61,7 +56,7 @@ def create_vector_db():
 
     # --- 5. 向量化并存储 ---
     print("🔄 3. 正在写入新数据库...")
-    # 这里不需要再删除了，因为开头已经删过了
+    # 仅在数据库不存在时会走到这里进行首次构建
     db = Chroma.from_documents(chunks, embeddings, persist_directory=CHROMA_PATH)
     print(f"   ✅ 向量数据库已重建完成！")
     return db
@@ -143,27 +138,64 @@ if __name__ == "__main__":
     for doc in sources:
         print(f" - {doc.metadata.get('source')} (内容片段: {doc.page_content[:20]}...)")
 from langgraph.graph import StateGraph, START, END
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from langchain_ollama import ChatOllama
 from typing import TypedDict, Annotated, List
 import operator
+from langchain_core.tools import tool
 
-class AgentState(TypedDict):          # ← 定义Agent当前状态（类似“记忆”）
-    messages: Annotated[List, operator.add]   # 消息列表，会自动累加
+# ================== 保留你文件最上方的原有 RAG retriever 初始化代码 ==================
+# （retriever = ... 那几行不要动）
 
-llm = ChatOllama(model="qwen2.5:14b", temperature=0.7)   # ← 核心：换成本地模型
+class AgentState(TypedDict):
+    messages: Annotated[List, operator.add]
 
-def call_llm(state: AgentState):      # ← 一个最简单的节点（函数）
-    response = llm.invoke(state["messages"])   # 调用LLM
+llm = ChatOllama(model="qwen2.5:14b", temperature=0.7)
+
+@tool
+def ic_rag_search(query: str) -> str:
+    """IC领域专业知识检索工具"""
+    docs = retriever.get_relevant_documents(query)
+    return "\n\n".join([doc.page_content[:800] for doc in docs[:3]])
+
+tools = [ic_rag_search]
+llm_with_tools = llm.bind_tools(tools)
+
+def call_llm(state: AgentState):
+    response = llm_with_tools.invoke(state["messages"])
     return {"messages": [response]}
 
-workflow = StateGraph(AgentState)     # ← 搭建流程图
-workflow.add_node("llm", call_llm)    # 加一个叫“llm”的节点
-workflow.add_edge(START, "llm")       # 从开始到llm节点
-workflow.add_edge("llm", END)         # llm节点结束
-app = workflow.compile()              # 编译成可运行的Agent
+def use_tool(state: AgentState):
+    """执行 Tool 并返回结果"""
+    last_message = state["messages"][-1]
+    if last_message.tool_calls:
+        tool_call = last_message.tool_calls[0]
+        if tool_call["name"] == "ic_rag_search":
+            result = ic_rag_search.invoke(tool_call["args"])
+            return {"messages": [ToolMessage(content=result, tool_call_id=tool_call["id"])]}
+    return {"messages": []}
 
-# 测试
-input_message = {"messages": [HumanMessage(content="帮我优化一个乘法器的时序约束")]}
-result = app.invoke(input_message)
-print(result)
+# ================== 真正的 ReAct 流程 ==================
+workflow = StateGraph(AgentState)
+workflow.add_node("llm", call_llm)
+workflow.add_node("tool", use_tool)
+
+workflow.add_edge(START, "llm")
+
+# 条件边：如果 LLM 决定调用 Tool，就去 tool 节点，否则结束
+def should_continue(state: AgentState):
+    last_message = state["messages"][-1]
+    if last_message.tool_calls:
+        return "tool"
+    return END
+
+workflow.add_conditional_edges("llm", should_continue)
+workflow.add_edge("tool", "llm")   # Tool 执行完再回到 LLM 继续思考
+
+app = workflow.compile()
+
+# 测试（直接运行这个）
+if __name__ == "__main__":
+    input_message = {"messages": [HumanMessage(content="帮我优化一个乘法器的时序约束")]}
+    result = app.invoke(input_message)
+    print(result)
