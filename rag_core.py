@@ -5,14 +5,13 @@ from dotenv import load_dotenv
 # 1. 加载文档的工具
 from langchain_community.document_loaders import PyPDFLoader, DirectoryLoader
 # 2. 切分文本的工具
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 # 3. 向量数据库
 from langchain_community.vectorstores import Chroma
 # 4. 向量化模型 (用来把文字变成数字)
-from langchain_openai import OpenAIEmbeddings
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
+from langchain_ollama import ChatOllama
+from langchain_core.prompts import ChatPromptTemplate
 # 加载环境变量 (API Key)
 load_dotenv()
 
@@ -20,14 +19,13 @@ load_dotenv()
 DATA_PATH = "./data"  # 存放 PDF 的文件夹
 CHROMA_PATH = "./chroma_db"  # 存放向量数据库的文件夹 (自动生成)
 embeddings = HuggingFaceEmbeddings(
-        model_name="/Users/jiaqing/rag/基于 RAG 的集成电路专业知识库助手/model/m3e-base",
+        model_name="model/m3e-base",
         model_kwargs={'device': 'mps'}  # 关键：这行代码能调用你 Mac 的 GPU/NPU 加速
     )
-llm = ChatOpenAI(
-    model="deepseek-r1-0528",  # 或者 moonshot-v1-8k
-    temperature=0.1,  # 设低一点，让它回答更严谨，不要瞎编
-    api_key=os.getenv("OPENAI_API_KEY"),
-    base_url=os.getenv("OPENAI_API_BASE")
+llm = ChatOllama(
+    model=os.getenv("OLLAMA_MODEL", "qwen2.5:14b"),
+    temperature=0.1,
+    base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 )
 def create_vector_db():
     """
@@ -144,3 +142,28 @@ if __name__ == "__main__":
     print("📚 参考来源:")
     for doc in sources:
         print(f" - {doc.metadata.get('source')} (内容片段: {doc.page_content[:20]}...)")
+from langgraph.graph import StateGraph, START, END
+from langchain_core.messages import HumanMessage
+from langchain_ollama import ChatOllama
+from typing import TypedDict, Annotated, List
+import operator
+
+class AgentState(TypedDict):          # ← 定义Agent当前状态（类似“记忆”）
+    messages: Annotated[List, operator.add]   # 消息列表，会自动累加
+
+llm = ChatOllama(model="qwen2.5:14b", temperature=0.7)   # ← 核心：换成本地模型
+
+def call_llm(state: AgentState):      # ← 一个最简单的节点（函数）
+    response = llm.invoke(state["messages"])   # 调用LLM
+    return {"messages": [response]}
+
+workflow = StateGraph(AgentState)     # ← 搭建流程图
+workflow.add_node("llm", call_llm)    # 加一个叫“llm”的节点
+workflow.add_edge(START, "llm")       # 从开始到llm节点
+workflow.add_edge("llm", END)         # llm节点结束
+app = workflow.compile()              # 编译成可运行的Agent
+
+# 测试
+input_message = {"messages": [HumanMessage(content="帮我优化一个乘法器的时序约束")]}
+result = app.invoke(input_message)
+print(result)
