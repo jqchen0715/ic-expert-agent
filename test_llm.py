@@ -8,10 +8,10 @@ load_dotenv()
 # 2. 初始化大模型 (这个 "chef" 大厨)
 # model_name 可以根据你用的平台改，比如 deepseek-chat 或 moonshot-v1-8k
 llm = ChatOpenAI(
-    model="deepseek-r1-0528",
+    model=os.getenv("OPENAI_MODEL", "qwen-plus"),
     temperature=0.7,
-    api_key=os.getenv("OPENAI_API_KEY"),
-    base_url=os.getenv("OPENAI_API_BASE")
+    api_key=os.getenv("OPENAI_API_KEY") or os.getenv("DASHSCOPE_API_KEY"),
+    base_url=os.getenv("OPENAI_API_BASE", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
 )
 
 # 3. 测试调用

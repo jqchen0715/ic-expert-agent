@@ -1,0 +1,152 @@
+[
+  {
+    "question": "参考文本中提到的用于标记模块前后以表示它是库单元的关键字是什么？",
+    "ground_truth": "celldefine",
+    "source": "data/Verilog 硬件描述语言.pdf"
+  },
+  {
+    "question": "复位部分在参考文本中的页码是多少？",
+    "ground_truth": "61",
+    "source": "data/AMBA总线规范_中文版_V2.0.pdf"
+  },
+  {
+    "question": "AREQx信号表示什么含义？",
+    "ground_truth": "从主机到仲裁器的表示主机请求总线的信号",
+    "source": "data/AMBA总线规范_中文版_V2.0.pdf"
+  },
+  {
+    "question": "当执行到wait时，如果其表达式为真，则下一条语句如何执行？",
+    "ground_truth": "立即执行",
+    "source": "data/Verilog 硬件描述语言.pdf"
+  },
+  {
+    "question": "AMBA总线规范中，当有传输要求时，总线会从哪个状态转移到 SETUP 状态？",
+    "ground_truth": "IDLE",
+    "source": "data/AMBA总线规范_中文版_V2.0.pdf"
+  },
+  {
+    "question": "编译电路时出现了多少个警告？",
+    "ground_truth": "530",
+    "source": "data/FPGA_SOPC入门级实验指导书.pdf"
+  },
+  {
+    "question": "参考文本中提到的 DTC12 单元实例化时，CLRZ 引脚连接了哪个信号？",
+    "ground_truth": "Clr",
+    "source": "data/华为_大规模逻辑设计指导书.pdf"
+  },
+  {
+    "question": "在向SOPC添加SSRAM时，需要解决的错误信息是什么？",
+    "ground_truth": "tristate_bridge_ssram.tristate_master must connected to Avalon-MM Tristate slave",
+    "source": "data/FPGA_SOPC入门级实验指导书.pdf"
+  },
+  {
+    "question": "建议每个从机不要插入多于多少个等待状态？",
+    "ground_truth": "16",
+    "source": "data/AMBA总线规范_中文版_V2.0.pdf"
+  },
+  {
+    "question": "AMBA系统中AHB总线从机的复位时序参数用哪个图表示？",
+    "ground_truth": "图 3.24",
+    "source": "data/AMBA总线规范_中文版_V2.0.pdf"
+  },
+  {
+    "question": "for 循环在每次迭代之前会进行什么操作？",
+    "ground_truth": "检查表达式的值",
+    "source": "data/Verilog 硬件描述语言.pdf"
+  },
+  {
+    "question": "参考文本中提到的未指定输入值和边沿组合的输出是什么？",
+    "ground_truth": "1'bX",
+    "source": "data/周立功Verilog HDL黄金参考指南.pdf"
+  },
+  {
+    "question": "参考文本中提到的用于记录数值变化的任务是什么？",
+    "ground_truth": "$dumpfile,$dumpvars,$dumpoff;$dumpon;$dumpall;$dumplimit,$dumpflush;",
+    "source": "data/Verilog 硬件描述语言.pdf"
+  },
+  {
+    "question": "使用多少个多路选择器来实现一个16位Barrel shifter?",
+    "ground_truth": "32",
+    "source": "data/华为_大规模逻辑设计指导书.pdf"
+  },
+  {
+    "question": "AMBA APB总线规范中读和写数据总线是否可以在三态缓冲实现下组合成单根总线？",
+    "ground_truth": "可以",
+    "source": "data/AMBA总线规范_中文版_V2.0.pdf"
+  },
+  {
+    "question": "实验九 SDRAM读写测试实验中，oDRAM0_BA[1]的引脚分配是什么？",
+    "ground_truth": "PIN_AA10",
+    "source": "data/FPGA_SOPC入门级实验指导书.pdf"
+  },
+  {
+    "question": "实验三中将输出结点和两个输入分别改为什么名称？",
+    "ground_truth": "oLEDG[0]，iSW[1] 和 iSW[0]",
+    "source": "data/FPGA_SOPC入门级实验指导书.pdf"
+  },
+  {
+    "question": "AMBA总线规范中的Tisrst参数描述是什么？",
+    "ground_truth": "在 HCLK之前 HRESETn 失效的建立时间",
+    "source": "data/AMBA总线规范_中文版_V2.0.pdf"
+  },
+  {
+    "question": "参考文本中 $q_exam 系统函数的作用是什么？",
+    "ground_truth": "显示 6 种队列信息",
+    "source": "data/Verilog 硬件描述语言.pdf"
+  },
+  {
+    "question": "如果不进行 DE2_70_pin_assignments.csv 文件的导入操作，可能会遇到什么问题？",
+    "ground_truth": "Nios II无法执行，并会出现如图11-54给出的错误信息",
+    "source": "data/FPGA_SOPC入门级实验指导书.pdf"
+  },
+  {
+    "question": "编译器伪指令中正确的撇号类型是什么？",
+    "ground_truth": "`",
+    "source": "data/周立功Verilog HDL黄金参考指南.pdf"
+  },
+  {
+    "question": "信号 aqi 的数据类型是什么，其取值范围是多少？",
+    "ground_truth": "aqi 是 INTEGER 类型，取值范围是 0 到 fpb",
+    "source": "data/FPGA_SOPC入门级实验指导书.pdf"
+  },
+  {
+    "question": "AHB总线中唯一的低电平有效的信号是什么？",
+    "ground_truth": "HRESETn",
+    "source": "data/AMBA总线规范_中文版_V2.0.pdf"
+  },
+  {
+    "question": "AHB译码器中，从地址到选择有效状态的延迟时间参数是什么？",
+    "ground_truth": "Tadsel",
+    "source": "data/AMBA总线规范_中文版_V2.0.pdf"
+  },
+  {
+    "question": "assign 左边的线网必须在哪里声明？",
+    "ground_truth": "在连续赋值语句前面的源代码中明确声明",
+    "source": "data/周立功Verilog HDL黄金参考指南.pdf"
+  },
+  {
+    "question": "参考文本中，'release RegisterLValue;'对应的中文是什么？",
+    "ground_truth": "释放寄存器值",
+    "source": "data/Verilog 硬件描述语言.pdf"
+  },
+  {
+    "question": "参考文本中第18页的内容是什么?",
+    "ground_truth": "设计流程",
+    "source": "data/周立功Verilog HDL黄金参考指南.pdf"
+  },
+  {
+    "question": "Altera 的 Megafunction 包括哪些类型？",
+    "ground_truth": "包括LPM（library of parameterized modules）、器件专有的Megafunction模块、用Altera MegaCore IP生成工具调用的IP Core以及AMPP提供的第三方IP Core。",
+    "source": "data/FPGA_SOPC入门级实验指导书.pdf"
+  },
+  {
+    "question": "参考文本中定义SUBBLOCK3使用的宏是什么？",
+    "ground_truth": "subblock3_gates",
+    "source": "data/Verilog 硬件描述语言.pdf"
+  },
+  {
+    "question": "supply0 和 supply1 类型的 nets 在没有驱动时分别具有什么逻辑值？",
+    "ground_truth": "供应类型为 supply0 的 net 没有驱动时具有逻辑值0，供应类型为 supply1 的 net 没有驱动时具有逻辑值1。",
+    "source": "data/Verilog 硬件描述语言.pdf"
+  }
+]

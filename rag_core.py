@@ -1,68 +1,72 @@
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-import sys
 from dotenv import load_dotenv
-# 1. 加载文档的工具
-from langchain_community.document_loaders import PyPDFLoader, DirectoryLoader
-# 2. 切分文本的工具
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-# 3. 向量数据库
 from langchain_community.vectorstores import Chroma
-# 4. 向量化模型 (用来把文字变成数字)
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
-from langchain_ollama import ChatOllama
+from llama_index_rag import get_llama_retriever   # ← 导入我们刚写的文件
 from typing import TypedDict, Annotated, List
 import operator
+import re
 from langchain_core.tools import tool
-#新切分形式
-from ic_text_splitter import ICCustomTextSplitter
-# --- 配置路径 ---
-DATA_PATH = "./data"  # 存放 PDF 的文件夹
-CHROMA_PATH = "./chroma_db"  # 存放向量数据库的文件夹 (自动生成)
+from langchain_community.embeddings import HuggingFaceEmbeddings
+
+# 加载环境变量 (API Key)
+load_dotenv()
+CHROMA_PATH = "./chroma_db"
+
+
+def _resolve_embedding_device() -> str:
+    # Allow explicit override via env (e.g. EMBEDDING_DEVICE=cpu in Docker)
+    manual_device = os.getenv("EMBEDDING_DEVICE")
+    if manual_device:
+        return manual_device
+
+    # Default: use MPS on Apple Silicon when available, otherwise CPU.
+    try:
+        import torch
+        if torch.backends.mps.is_available():
+            return "mps"
+    except Exception:
+        pass
+    return "cpu"
+
+
+EMBEDDING_DEVICE = _resolve_embedding_device()
 embeddings = HuggingFaceEmbeddings(
         model_name="model/m3e-base",
-        model_kwargs={'device': 'mps'}  # 关键：这行代码能调用你 Mac 的 GPU/NPU 加速
+        model_kwargs={"device": EMBEDDING_DEVICE}
     )
-llm = ChatOllama(
-    model=os.getenv("OLLAMA_MODEL", "qwen2.5:14b"),
-    temperature=0.7,
-    base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-)
-def create_vector_db():
-    """核心逻辑：强制重建数据库 (加载 PDF -> 切分 -> 向量化 -> 存入数据库)。"""
-    if os.path.exists(CHROMA_PATH):
-        import shutil
-        shutil.rmtree(CHROMA_PATH)
-        print(f"🗑️ 已删除旧数据库 {CHROMA_PATH}，正在准备重建...")
-
-    if not os.path.exists(DATA_PATH):
-        print(f"❌ 错误：没有找到 {DATA_PATH} 文件夹")
-        return None
-
-    print("🔄 1. 正在加载 PDF 文档...")
-    loader = DirectoryLoader(DATA_PATH, glob="*.pdf", loader_cls=PyPDFLoader)
-    documents = loader.load()
-    if not documents:
-        print("❌ 错误：data 文件夹里没有 PDF！")
-        return None
-    print(f"   ✅ 成功加载 {len(documents)} 页文档。")
-
-    print("🔄 2. 正在切分文本（IC定制化策略）...")
-    # 替换为自定义IC分割器
-    text_splitter = ICCustomTextSplitter(chunk_size=800, chunk_overlap=100)
-    chunks = text_splitter.split_documents(documents)  # 用自定义的split_documents方法
-    print(f"   ✅ 成功切分为 {len(chunks)} 个文本块。")
-
-    print("🔄 3. 正在写入新数据库...")
-    os.makedirs(CHROMA_PATH, exist_ok=True)
-    db = Chroma.from_documents(chunks, embeddings, persist_directory=CHROMA_PATH)
-    print(f"   ✅ 向量数据库已重建完成！")
-    return db
-
+print(f"🔧 Embedding device: {EMBEDDING_DEVICE}")
+# ====================== 【混合模式：本地开发用云端，Docker 用本地 Ollama】 ======================
+if os.getenv("USE_LOCAL_OLLAMA", "false").lower() == "true":
+    # Docker 部署时走本地 Ollama
+    llm = ChatOllama(
+        model=os.getenv("OLLAMA_MODEL", "qwen2.5:7b"),
+        temperature=0.7,
+        streaming=True,
+        base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    )
+    print("🚀 使用本地 Ollama (qwen2.5:7b)")
+else:
+    # 本地开发默认走云端（你原来的 qwen3.6-plus）
+    llm = ChatOpenAI(
+        model="qwen3.6-plus",          # ← 你云端模型名
+        temperature=0.7,
+        streaming=True,
+        # 统一使用 OPENAI_API_BASE（兼容保留 OPENAI_BASE_URL）
+        base_url=os.getenv("OPENAI_API_BASE") or os.getenv("OPENAI_BASE_URL"),
+        api_key=os.getenv("OPENAI_API_KEY") or os.getenv("DASHSCOPE_API_KEY"),
+    )
+    print("☁️ 使用云端模型 (qwen3.6-plus)")
+# ====================== LangSmith 配置 ======================
+os.environ["LANGCHAIN_TRACING_V2"] = "true"
+os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
+os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGCHAIN_API_KEY")
+os.environ["LANGCHAIN_PROJECT"] = "ic-expert-agent-infra-prod"
 
 def get_retriever(score_threshold: float = 0.5):
     """按需创建 retriever，避免全局连接长期占用数据库文件。"""
@@ -75,28 +79,20 @@ def get_retriever(score_threshold: float = 0.5):
         },
     )
 
-
 def search_rag(query_text: str):
-    """IC领域检索函数（LangChain标准Retriever版）"""
-    retriever = get_retriever(score_threshold=0.5)
-    docs = retriever.invoke(query_text)   # ← 标准 LangChain 调用方式
+    """【推荐使用】LlamaIndex 优化后的检索函数（替换原来的 Chroma 版）"""
+    retriever = get_llama_retriever()
+    nodes = retriever.retrieve(query_text)
+    # 转成 LangChain 兼容的 Document 格式，保持 Agent 完全不改
+    from langchain_core.documents import Document
+    docs = [Document(page_content=node.text, metadata=node.metadata) for node in nodes]
     return docs
 
 def get_rag_response(question):
-    """
-    核心逻辑：检索 + 生成
-    """
-    # 1. 连接数据库
-    db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embeddings)
-
-    # 2. 检索 (Retrieve) - 找 3 个相关片段
-    docs = db.similarity_search(question, k=3)
-
-    # 3. 拼接上下文 (Context)
+    """核心 RAG 生成函数（已切换为 LlamaIndex）"""
+    docs = search_rag(question)
     context_text = "\n\n".join([doc.page_content for doc in docs])
 
-    # 4. 构造 Prompt (这就是 Prompt Engineering！)
-    # 我们强制要求它扮演 IC 专家，并且只能基于 Context 回答
     PROMPT_TEMPLATE = """
     你是一名集成电路(IC)领域的资深技术专家。请基于下面的【参考资料】回答用户的问题。
 
@@ -115,24 +111,16 @@ def get_rag_response(question):
     prompt = ChatPromptTemplate.from_template(PROMPT_TEMPLATE)
     prompt_text = prompt.format(context=context_text, question=question)
 
-    # 5. 生成 (Generate)
-    print(f"😉 正在思考... (Prompt 长度: {len(prompt_text)})")
+    print(f"😉 正在思考... (上下文长度: {len(context_text)})")
     response = llm.invoke(prompt_text)
 
-    # 返回：生成的回答 + 引用来源
     return response.content, docs
-
 
 # 测试代码入口
 if __name__ == "__main__":
-    # 第一步：强制重新学习！(这一步就是你在图片里看到的逻辑)
-    # 它会清空旧的 chroma_db，把 data 文件夹里的新 PDF 重新吃进去
-    create_vector_db()
-
     # 第二步：学习完了，现在开始提问
     question = "什么是 Verilog？"
     answer, sources = get_rag_response(question)
-
     print(f"\n❓ 问题: {question}")
     print("-" * 50)
     print(f"😎 AI 回答: {answer}")
@@ -149,9 +137,8 @@ class AgentState(TypedDict):
 
 @tool
 def ic_rag_search(query: str) -> str:
-    """IC领域专业知识检索工具 - 任何关于Verilog、时序约束、PDK、芯片设计的问题都必须使用这个工具"""
-    retriever = get_retriever(score_threshold=0.5)
-    docs = retriever.invoke(query)
+    """IC领域专业知识检索工具 - 已升级为 LlamaIndex 优化版"""
+    docs = search_rag(query)   # ← 使用 LlamaIndex
     return "\n\n".join([doc.page_content[:800] for doc in docs[:3]])
 
 tools = [ic_rag_search]
@@ -183,8 +170,7 @@ def verilog_code_analyzer(verilog_code: str) -> str:
     
     if not analysis:
         analysis.append("✅ 代码通过基础静态审查，未发现明显IC设计常见问题")
-    
-    # 额外智能提示（你可以后续换成调用Ollama更深层分析）
+
     result = "\n".join(analysis)
     return f"【Verilog代码审查报告】\n{result}\n\n提示：如需更深度分析，请提供完整模块代码。"
  # ====================== 新增 Tool 3：时序约束建议工具 ======================
@@ -234,8 +220,68 @@ system_prompt = SystemMessage(content="""你是一个专业的IC设计专家Agen
 def call_llm(state: AgentState):
     # 每次都带上system prompt
     messages = [system_prompt] + state["messages"]
+    # LangSmith 自动追踪所有 LLM 调用、Tool 调用、Token 消耗
     response = llm_with_tools.invoke(messages)
     return {"messages": [response]}
+
+
+def _latest_user_query(messages: List) -> str:
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            return msg.content
+    return ""
+
+
+def _guess_clock_period_ns(text: str, default: float = 5.0) -> float:
+    # Parse values like "2.5ns" / "2.5 ns" to auto-fill timing tool input.
+    m = re.search(r"(\d+(?:\.\d+)?)\s*ns", text.lower())
+    if m:
+        try:
+            return float(m.group(1))
+        except ValueError:
+            return default
+    return default
+
+
+def pre_tool_router(state: AgentState):
+    """Hard guarantee: run one domain tool before LLM for each user turn."""
+    query = _latest_user_query(state["messages"])
+    if not query:
+        return {"messages": []}
+
+    q_lower = query.lower()
+    tool_name = "ic_rag_search"
+
+    verilog_markers = ["module", "endmodule", "always", "assign", "verilog", "rtl", "`timescale"]
+    timing_markers = ["sdc", "时序", "约束", "clock", "setup", "hold", "多周期", "false path"]
+
+    try:
+        if any(k in q_lower for k in verilog_markers):
+            tool_name = "verilog_code_analyzer"
+            result = verilog_code_analyzer.invoke({"verilog_code": query})
+        elif any(k in q_lower for k in timing_markers):
+            tool_name = "timing_constraint_suggester"
+            result = timing_constraint_suggester.invoke(
+                {
+                    "module_name": "user_module",
+                    "clock_period_ns": _guess_clock_period_ns(query, 5.0),
+                    "io_description": query,
+                }
+            )
+        else:
+            result = ic_rag_search.invoke({"query": query})
+
+        injected = SystemMessage(
+            content=(
+                f"【预处理工具: {tool_name}】\n"
+                f"以下是工具返回结果，请严格基于该结果作答：\n{result}"
+            )
+        )
+        return {"messages": [injected]}
+    except Exception as exc:
+        # Keep agent available even if pre-tool fails.
+        fallback = SystemMessage(content=f"【预处理工具失败】{exc}")
+        return {"messages": [fallback]}
 
 def use_tool(state: AgentState):
     last_message = state["messages"][-1]
@@ -264,10 +310,12 @@ def should_continue(state: AgentState):
     return END
 
 workflow = StateGraph(AgentState)
+workflow.add_node("pre_tool", pre_tool_router)
 workflow.add_node("llm", call_llm)
 workflow.add_node("tool", use_tool)
 
-workflow.add_edge(START, "llm")
+workflow.add_edge(START, "pre_tool")
+workflow.add_edge("pre_tool", "llm")
 workflow.add_conditional_edges("llm", should_continue)
 workflow.add_edge("tool", "llm")
 
@@ -296,6 +344,7 @@ endmodule
         )
     )
 
-    input_message = {"messages": [HumanMessage(content="帮我优化一个乘法器的时序约束")]}
+    # 在 ReAct Agent 测试部分输入
+    input_message = {"messages": [HumanMessage(content="乘法器时序优化有哪些方法？")]}
     result = app.invoke(input_message, {"recursion_limit": 20})
     print(result)

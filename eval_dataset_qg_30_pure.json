@@ -1,0 +1,42 @@
+[
+  {
+    "question": "参考文本中提到的用于标记模块前后以表示它是库单元的关键字是什么？",
+    "ground_truth": "celldefine"
+  },
+  {
+    "question": "复位部分在参考文本中的页码是多少？",
+    "ground_truth": "61"
+  },
+  {
+    "question": "AREQx信号表示什么含义？",
+    "ground_truth": "从主机到仲裁器的表示主机请求总线的信号"
+  },
+  {
+    "question": "当执行到wait时，如果其表达式为真，则下一条语句如何执行？",
+    "ground_truth": "立即执行"
+  },
+  {
+    "question": "AMBA总线规范中，当有传输要求时，总线会从哪个状态转移到 SETUP 状态？",
+    "ground_truth": "IDLE"
+  },
+  {
+    "question": "编译电路时出现了多少个警告？",
+    "ground_truth": "530"
+  },
+  {
+    "question": "参考文本中提到的 DTC12 单元实例化时，CLRZ 引脚连接了哪个信号？",
+    "ground_truth": "Clr"
+  },
+  {
+    "question": "在向SOPC添加SSRAM时，需要解决的错误信息是什么？",
+    "ground_truth": "tristate_bridge_ssram.tristate_master must connected to Avalon-MM Tristate slave"
+  },
+  {
+    "question": "建议每个从机不要插入多于多少个等待状态？",
+    "ground_truth": "16"
+  },
+  {
+    "question": "AMBA系统中AHB总线从机的复位时序参数用哪个图表示？",
+    "ground_truth": "图 3.24"
+  }
+]
